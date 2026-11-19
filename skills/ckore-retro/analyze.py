@@ -81,8 +81,11 @@ def stray_jsonl(main_path):
     a sign the layout changed and something is being missed."""
     d = main_path[:-len(".jsonl")]
     known = set(subagent_files(main_path))
+    # A Workflow run keeps its agents' return values in subagents/workflows/<run>/journal.jsonl;
+    # those are results, not API calls, so they are expected and carry no cost.
+    journals = set(glob.glob(os.path.join(d, "subagents", "workflows", "*", "journal.jsonl")))
     return [p for p in glob.glob(os.path.join(d, "**", "*.jsonl"), recursive=True)
-            if p not in known]
+            if p not in known and p not in journals]
 
 
 def resolve(arg):
