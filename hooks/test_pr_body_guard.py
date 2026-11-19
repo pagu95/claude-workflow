@@ -44,6 +44,15 @@ class PrBodyGuard(unittest.TestCase):
             self.assertEqual(run(shell(f'gh pr create --title x --body-file "{good}"')), 0)
             self.assertEqual(run(shell(f'gh pr create --title x -F "{bad}"')), 2)
 
+    def test_commit_dash_F_before_create_is_not_the_body_file(self):
+        with tempfile.TemporaryDirectory() as d:
+            good = os.path.join(d, "good.md")
+            with open(good, "w", encoding="utf-8") as f:
+                f.write(LINE + "\n\nSummary\n")
+            cmd = (f"git commit -q -F - <<'EOF'\nmsg\nEOF\n"
+                   f'git push && gh pr create --title x --body-file "{good}"')
+            self.assertEqual(run(shell(cmd)), 0)
+
     def test_fill_without_body_is_blocked(self):
         self.assertEqual(run(shell("gh pr create --fill")), 2)
 

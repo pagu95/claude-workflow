@@ -17,8 +17,8 @@ LINE = re.compile(r"merge danger:", re.I)
 BODY_FILE = re.compile(r"(?:--body-file|-F)[\s=]+(?:\"([^\"]+)\"|'([^']+)'|(\S+))")
 
 
-def body_file_has_line(command, cwd):
-    m = BODY_FILE.search(command)
+def body_file_has_line(command, cwd, start):
+    m = BODY_FILE.search(command, start)  # after `gh pr create`: a `git commit -F -` earlier isn't it
     if not m:
         return False
     path = next(g for g in m.groups() if g)
@@ -39,8 +39,9 @@ def main():
     if data.get("tool_name") not in ("Bash", "PowerShell"):
         return 0
     command = (data.get("tool_input") or {}).get("command") or ""
-    if not CREATE.search(command) or LINE.search(command) \
-            or body_file_has_line(command, data.get("cwd") or ""):
+    create = CREATE.search(command)
+    if not create or LINE.search(command) \
+            or body_file_has_line(command, data.get("cwd") or "", create.end()):
         return 0
     print("Blocked `gh pr create`: the PR body has no `Merge danger:` line. Run `ckore-review` and put "
           "its last line first in the body, e.g. `Merge danger: two-way / local / skim`.",
