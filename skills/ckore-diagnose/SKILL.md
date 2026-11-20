@@ -72,5 +72,5 @@ Give at most 5 ranked hypotheses, one line each, in this form: "If X, then chang
 - [ ] The **original** Phase 2 command passes, and its result is quoted in this message. A green unit test or a code change on its own doesn't count. If you didn't run it, write "not run", never "should work".
 - [ ] No `[DEBUG-` left (grep)
 - [ ] The root cause is stated in one sentence in the PR body
-- [ ] Any new trap for the area is added to that area's CLAUDE.md, or handled by the profile's context-upkeep skill
+- [ ] Any new trap for the area is added to that area's CLAUDE.md, or handled by the profile's context-upkeep skill. If the area has no CLAUDE.md, create one with a `## Gotchas` heading; don't fall back to the root file
 - [ ] If the deciding fact took a deep dig, propose (don't add) one cheap permanent signal, such as a log line or a field, that would have shown it at first look

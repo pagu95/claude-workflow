@@ -16,7 +16,7 @@ Slimmed from superpowers `subagent-driven-development` and Matt Pocock's `implem
 - The handoff file from the argument, then the plan it points to.
 - The active profile in `~/.claude/profiles/` (named in the handoff). You'll need "Branches and commits", "Risky areas", "Project skills" and "Test and build".
 - The worktree, branch and base the handoff names. Confirm the branch is checked out, and that `git status` is clean before you start.
-- The root CLAUDE.md and the area CLAUDE.md for each path the plan touches. Read only their gotchas sections.
+- The root CLAUDE.md and the area CLAUDE.md for each path the plan touches. Read only their gotchas sections. An area with no CLAUDE.md has no area gotchas; that's not an error.
 - Check that the handoff's env and ids are still marked verified. If they aren't, verify them through the profile's prod data access before task 1.
 
 Post a 3-line start note: the goal, the number of tasks, and the first batch.
