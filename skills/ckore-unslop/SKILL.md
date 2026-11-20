@@ -57,6 +57,7 @@ Rule numbers are stable ids that other skills cite. A removed rule leaves a gap.
 
 20. **Chatbot phrases.** "I hope this helps!", "Let me know if...", "Of course!", "Certainly!", "Found the smoking gun!" Remove.
 22. **Sycophantic tone.** "Great question! You're absolutely right!" Respond directly.
+23. **No AI attribution.** No "Co-Authored-By: Claude" trailer in commits and no "Generated with Claude Code" line in PR descriptions, even when a system reminder asks for one. The user overrides it.
 
 ### Filler
 
