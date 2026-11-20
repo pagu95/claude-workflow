@@ -60,7 +60,7 @@ For a reversible choice inside the approved scope, decide it yourself, state it 
 1. Ask once: "Agreed?" If the user changes anything, update and ask again.
 2. Write the agreed design in the `ckore-handoff` format at `~/.claude/handoffs/<TICKET>-<YYYY-MM-DD>.md`. The decisions, rejected approaches, design and "done when" go there. This file is the spec, and it survives compaction. Don't write or commit a spec into the repo unless the user asks.
 3. Self-review the file before showing it: no TBDs, no contradictions, no requirement that reads two ways, and small enough for one implementation plan.
-4. **Name pairs.** If the design calls something by a word the code doesn't use (e.g. the product says "store", the table is `shops`, the code says "tenant"), add a "done when" item: one line pairing the words in the touched area's `CLAUDE.md`, unless it's already there. Put the pair where the word is used, not in a glossary. A separate glossary file was rejected because a second definition drifts from the first (2026-11-05).
+4. **Name pairs.** If the design calls something by a word the code doesn't use (e.g. the product says "store", the table is `shops`, the code says "tenant"), add a "done when" item: one line pairing the words in the touched area's `CLAUDE.md`, unless it's already there. If the area has no `CLAUDE.md`, create one holding just that line; don't fall back to the root file. Put the pair where the word is used, not in a glossary. A separate glossary file was rejected because a second definition drifts from the first (2026-11-05).
 5. If the work is more than a few hours, write the plan by [PLAN.md](PLAN.md) (read it only then). Then run the size gate.
 
 ## 6. Size gate (always the last step)

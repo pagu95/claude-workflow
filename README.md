@@ -50,6 +50,7 @@ The installer:
 
 1. Copy [profiles/TEMPLATE.md](profiles/TEMPLATE.md) to `~/.claude/profiles/<project>.md` and fill in what applies: environments, prod data access, base branch, commit format, sibling repos, risky areas. The skills read project facts from there, never from their own text.
 2. In a project, run `/ckore-guide` to see what each skill is for, or describe the task and let `CLAUDE.md`'s routing pick one.
+3. Besides the root `CLAUDE.md`, the skills read one `CLAUDE.md` per domain area (folder). It holds the area's gotchas, name pairs (product word ↔ code word) and its test command. You don't need to write them up front: `ckore-design` and `ckore-diagnose` add lines as you work. This replaces a separate glossary file.
 
 ## Your private overlay
 
