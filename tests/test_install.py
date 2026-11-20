@@ -98,6 +98,17 @@ class Install(unittest.TestCase):
         with open(lessons) as f:
             self.assertEqual(f.read(), "# Lessons\n")
 
+    def test_overlay_links_its_agent_definitions(self):
+        ov = self.make_overlay()
+        os.makedirs(os.path.join(ov, "agents"))
+        with open(os.path.join(ov, "agents", "night-hat.md"), "w") as f:
+            f.write("---\nname: night-hat\n---\n")
+        self.install("--overlay", ov)
+        agent = os.path.join(self.claude, "agents", "night-hat.md")
+        self.assertTrue(os.path.islink(agent))
+        with open(agent) as f:
+            self.assertEqual(f.read(), "---\nname: night-hat\n---\n")
+
     def test_rerun_without_overlay_keeps_overlay_links(self):
         ov = self.make_overlay()
         self.install("--overlay", ov)

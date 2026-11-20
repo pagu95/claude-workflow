@@ -3,7 +3,7 @@
 # - symlinks skills/* into ~/.claude/skills (existing real dirs are moved to a dated backup) and
 #   removes the links it left for renamed or deleted skills
 # - symlinks profiles/*.md (except TEMPLATE.md) into ~/.claude/profiles
-# - with --overlay <dir>: does the same for that private repo's skills/ and profiles/, and links its
+# - with --overlay <dir>: does the same for that private repo's skills/, profiles/ and agents/, and links its
 #   <dir>/ledger/LESSONS.md to ~/.claude/retro/LESSONS.md, and records <dir> in ~/.claude/claude-workflow-overlay
 # - a real profile or ledger file is replaced by a link only when its content is identical to the repo's
 # - adds an @import of this repo's CLAUDE.md to ~/.claude/CLAUDE.md (never overwrites the file)
@@ -86,11 +86,23 @@ link_profiles() {
   done
 }
 
+# Custom agent types (e.g. the night council's slim Hat and Merge agents) live in <root>/agents.
+link_agents() {
+  local src
+  for src in "$1"/agents/*.md; do
+    [ -e "$src" ] || continue
+    mkdir -p "$CLAUDE_DIR/agents"
+    link_file "$src" "$CLAUDE_DIR/agents/$(basename "$src")" "agent   $(basename "$src" .md)"
+  done
+}
+
 link_skills "$REPO"
 link_profiles "$REPO"
+link_agents "$REPO"
 if [ -n "$OVERLAY" ]; then
   link_skills "$OVERLAY"
   link_profiles "$OVERLAY"
+  link_agents "$OVERLAY"
   # Lets the public repo's leak check find the deny list (tests/test_leak_denylist.py).
   echo "$OVERLAY" > "$CLAUDE_DIR/claude-workflow-overlay"
   [ -e "$OVERLAY/ledger/LESSONS.md" ] && link_file "$OVERLAY/ledger/LESSONS.md" "$CLAUDE_DIR/retro/LESSONS.md" "ledger  ~/.claude/retro/LESSONS.md"
