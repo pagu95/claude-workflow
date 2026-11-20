@@ -16,6 +16,7 @@ python -I $A --last 10 [--exclude 'regex']   # trend: one line per session + rep
 python -I $A <sessionId>                     # one session in depth (prefix ok); no id = current
 python -I $A --list                          # recent sessions
 python -I $A --family <id|path> ...          # several sessions as one total, each API call once (forks re-list their parent's calls)
+python -I $A --smells [days]                 # ckore-review findings per smell, default 30 days
 ```
 
 Options for one session: `--cutoff <ISO>|none`, `--report <path>` (Markdown, only if the user wants a file), `--prices <file>`, `--main-only` (never quote it as a session total).
@@ -57,6 +58,11 @@ Then diagnose. The recurring drivers, in order of size across measured sessions:
    - None of these (a wrong guess that was reasonable at the time) → no lesson
 
 Give each lever in dollars and say the estimates overlap rather than add up.
+
+Then the two quality columns, which are counts, not dollars:
+- **red-first**: source files whose first edit came after a test-file edit and a failing test run. Below 50% across sessions points at `ckore-tdd` or the build worker brief. A runner the script doesn't recognise, or output only read later from a log file, reads as "not red": check the session's test commands before calling it a lesson.
+- **weakened**: added skip/.only markers, removed assertions, deleted test files (not temporary copies the same thread put there). Any hit in 2+ sessions is the case for a skip/.only hook through `ckore-correct`.
+- **`--smells`**: a smell found on 2+ branches is a lesson candidate for the area `CLAUDE.md` or a `ckore-refactor` sweep, routed like any other pattern.
 
 ## 4. Turn patterns into lessons
 

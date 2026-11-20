@@ -29,8 +29,8 @@ Add this to both prompts:
 
 **Standards agent.** Give it the diff command, the list of standards files, and this checklist. Repo rules always win over the heuristics.
 
-- **Repo rules.** Any breach of a documented repo rule, with the file and the rule quoted (hard).
-- **Security and data safety** (hard if real):
+- **Repo rules** (`repo-rule`). Any breach of a documented repo rule, with the file and the rule quoted (hard).
+- **Security and data safety** (`security`, hard if real):
   - Injection: user-controlled input reaching queries or filters, in the forms the profile lists.
   - Missing auth, ownership or admin checks.
   - Secrets or PII in logs or in client code.
@@ -38,18 +38,18 @@ Add this to both prompts:
   - Unbounded queries or missing indexes, flagged only on hot tables or collections.
   - Non-idempotent job or webhook handlers, flagged only where the handler really retries.
   - Everything else listed in the profile's "Data store risks".
-- **Tests.** Tautological tests, where the expected value is computed the same way the code computes it.
+- **Tests** (`tautological-test`). Tautological tests, where the expected value is computed the same way the code computes it.
 - **Smells.** Always label these "possible X", never as hard violations:
-  - duplicated logic
-  - speculative generality, plus validators, guards or parsers beyond what the spec needs
-  - validation repeated deep inside the code when it belongs at the API or job boundary
-  - wrappers with one caller, and pass-through layers that repeat the same arguments
-  - the same status if-cascade at several sites
-  - the same fields always travelling together
-  - mysterious names
-  - shotgun surgery
-  - raw strings standing in for ids and statuses
-  - comments that narrate what the code does, or claim a constraint ("do not change") with no test or type behind it; keep only a non-obvious why (from poteto's `no-comments`)
+  - duplicated logic (`duplicated-logic`)
+  - speculative generality, plus validators, guards or parsers beyond what the spec needs (`speculative-generality`)
+  - validation repeated deep inside the code when it belongs at the API or job boundary (`deep-validation`)
+  - wrappers with one caller, and pass-through layers that repeat the same arguments (`pass-through`)
+  - the same status if-cascade at several sites (`status-cascade`)
+  - the same fields always travelling together (`data-clump`)
+  - mysterious names (`mysterious-name`)
+  - shotgun surgery (`shotgun-surgery`)
+  - raw strings standing in for ids and statuses (`raw-string-id`)
+  - comments that narrate what the code does, or claim a constraint ("do not change") with no test or type behind it; keep only a non-obvious why (from poteto's `no-comments`) (`narrating-comment`)
 
 **Spec agent.** Give it the diff command and the spec. It reports:
 - missing or partial requirements
@@ -70,6 +70,8 @@ A subagent's report is a claim. Open each `file:line` it cites and confirm it be
 - …
 Merge danger: <two-way|one-way> / <local|shared: readers> / <skim|read it all>
 ```
+
+Then log each confirmed Standards finding for `ckore-retro --smells`: append one line per finding to `~/.claude/retro/smells.jsonl` (create the folder if needed), `{"date": "<YYYY-MM-DD>", "repo": "<repo folder name>", "branch": "<branch>", "smell": "<id from the checklist>", "kind": "hard|judgement"}`. The file is machine-local; never copy it into a repo. Skip the log when re-reviewing the same unchanged diff.
 
 Keep the two axes separate and don't rerank across them. Leave out empty sections and anything a linter already enforces. Don't post the review on the PR.
 
