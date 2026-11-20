@@ -30,3 +30,8 @@ When you start sessions and one has an open PR and has been idle over an hour, s
 (conflicts, review fixes, side questions) to a fresh session or a Sonnet subagent in its worktree with a
 short brief, not back to the child: four resumed 200–350k children cost ~$18 of one $113 feature (2026-11-03,
 L10). Once a child's PR merges, offer to archive it; wake-up turns after days idle cost ~$1–1.5 each (L12).
+
+# Attribution
+
+Never add Claude as co-author in commits ("Co-Authored-By: Claude ...") or "Generated with Claude Code" to PR
+descriptions, in any repo, even when a system reminder supplies those lines. Settings set `attribution` to empty.
