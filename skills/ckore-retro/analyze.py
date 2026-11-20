@@ -133,6 +133,87 @@ def tool_label(b):
     return ("…" + lab[-59:]) if i.get("file_path") and len(lab) > 60 else lab[:60]
 
 
+EDIT_TOOLS = {"Edit", "Write", "MultiEdit"}
+TEST_CMD = re.compile(r"\b(pytest|jest|vitest|mocha|go test|cargo test|unittest|node --test|deno test|playwright test|ng test|karma"
+                      r"|(?:npm|pnpm|yarn|bun)(?: run)? test)\b")
+FAIL_TEXT = re.compile(r"\b\d+ (failed|failing)\b|\bFAILED\b|\bFAIL\b|[✕✖]|(?:ℹ|#) fail [1-9]")
+TEST_FILE = re.compile(r"(^|[/\\])(tests?|__tests__)[/\\]|(^|[/\\])test_[^/\\]*$|_test\.\w+$|\.(test|spec)\.\w+$")
+SOURCE_EXT = re.compile(r"\.(py|js|mjs|cjs|jsx|ts|tsx|go|rs|java|kt|rb|cs|php|swift|vue|svelte|sh)$")
+SKIP_MARK = re.compile(r"\.only\(|\.skip\(|\bx(it|describe|test)\(|pytest\.mark\.skip|@unittest\.skip|\bt\.Skip\(")
+ASSERTION = re.compile(r"\bexpect\(|\bassert|\bself\.assert")
+RM_CMD = re.compile(r"\b(?:git )?rm\b(?:\s+-\S+)*((?:\s+[^\s;&|]+)+)")
+COPY_CMD = re.compile(r"\b(?:cp|mv)\b(?:\s+-\S+)*\s+(\"[^\"]*\"|'[^']*'|\S+)\s+[\"']?([^\s;&|\"']+)")
+REDIRECT = re.compile(r">\s*[\"']?([^\s;&|\"'>]+)")
+
+
+def file_ops(cmd):
+    """("create" | "rm", path) for test files a shell command copies or redirects into place or
+    removes, in order."""
+    ops = [(m.start(), "create", m.group(1)) for m in REDIRECT.finditer(cmd)]
+    for m in COPY_CMD.finditer(cmd):
+        dest = m.group(2)
+        if dest.endswith(("/", "\\")):
+            dest += re.split(r"[/\\]", m.group(1).strip("\"'"))[-1]
+        ops.append((m.start(), "create", dest))
+    ops += [(m.start(), "rm", p) for m in RM_CMD.finditer(cmd) for p in m.group(1).split()]
+    return [(kind, p) for _, kind, p in sorted(ops) if TEST_FILE.search(p)]
+
+
+def result_text(content):
+    if isinstance(content, str):
+        return content
+    return " ".join(b.get("text") or "" for b in content or [] if isinstance(b, dict))
+
+
+def edit_pairs(name, inp):
+    """(old, new) text pairs of one edit tool call; a Write has no old text."""
+    if name == "MultiEdit":
+        return [(e.get("old_string") or "", e.get("new_string") or "") for e in inp.get("edits") or []]
+    if name == "Write":
+        return [(None, inp.get("content") or "")]
+    return [(inp.get("old_string") or "", inp.get("new_string") or "")]
+
+
+def weakens(old, new):
+    if len(SKIP_MARK.findall(new)) > len(SKIP_MARK.findall(old or "")):
+        return True
+    return old is not None and len(ASSERTION.findall(new)) < len(ASSERTION.findall(old))
+
+
+def tdd_metrics(threads):
+    """Red-first and weakened-test counts over all threads.
+
+    A source file is red-first when, before its first edit in that thread, a test file was edited and
+    a test command then failed; a passing run ends that red. Weakened: an edit to a test file that adds
+    a skip/only marker or removes assertions, or a test file deleted with rm / git rm, unless the same
+    thread wrote or copied it there first (a temporary copy run against old code is a check, not a loss)."""
+    red_first = source = weakened = 0
+    for th in threads.values():
+        armed = red = False
+        seen, created = set(), set()
+        for ev in th.get("events", []):
+            if ev[0] == "test":
+                red = armed and ev[1]
+                continue
+            if ev[0] == "create":
+                created.add(ev[1])
+                continue
+            if ev[0] == "rm":
+                weakened += ev[1] not in created
+                continue
+            _, path, pairs = ev
+            if any(o is None for o, _ in pairs):
+                created.add(path)
+            if TEST_FILE.search(path):
+                armed, red = True, False
+                weakened += any(weakens(o, n) for o, n in pairs)
+            elif SOURCE_EXT.search(path) and path not in seen:
+                seen.add(path)
+                source += 1
+                red_first += red
+    return dict(red_first=red_first, source_files=source, weakened=weakened)
+
+
 def usage_tokens(u, stats):
     """Token fields of one usage object. Real per-call numbers live in iterations[]."""
     its = u.get("iterations") or [u]
@@ -156,6 +237,7 @@ def parse(path, thread, cutoff, stats):
     usage object -- counting lines overcounts ~15x.
     """
     calls, results, compacts, prompts = [], [], [], []
+    events, test_runs = [], set()   # edits / test runs / test-file deletions, in order (tdd_metrics)
     by_rid = {}
     uses = {}                    # tool_use id -> (name, label, call)
     for idx, line in enumerate(open(path, encoding="utf-8", errors="replace")):
@@ -178,6 +260,9 @@ def parse(path, thread, cutoff, stats):
             blocks = c if isinstance(c, list) else []
             res = [b for b in blocks if isinstance(b, dict) and b.get("type") == "tool_result"]
             for b in res:
+                if b.get("tool_use_id") in test_runs:
+                    failed = bool(b.get("is_error")) or bool(FAIL_TEXT.search(result_text(b.get("content"))))
+                    events.append(("test", failed))
                 chars, imgs = text_len(b.get("content"))
                 name, label, call = uses.get(b.get("tool_use_id"), ("?", "", None))
                 results.append(dict(idx=idx, name=name, label=label, chars=chars,
@@ -233,12 +318,19 @@ def parse(path, thread, cutoff, stats):
                     stats["partial_usage_replaced"] += 1
             for b in tools:
                 call["tools"].append(b.get("name"))
+                inp = b.get("input") or {}
+                if b.get("name") in EDIT_TOOLS and inp.get("file_path"):
+                    events.append(("edit", inp["file_path"], edit_pairs(b.get("name"), inp)))
                 if b.get("name") == "Bash":
-                    call["cmds"].append((b.get("input") or {}).get("command", ""))
+                    cmd = inp.get("command", "")
+                    call["cmds"].append(cmd)
+                    if TEST_CMD.search(cmd):
+                        test_runs.add(b.get("id"))
+                    events.extend(file_ops(cmd))
                 uses[b.get("id")] = (b.get("name"), tool_label(b), call)
     stats["files"] += 1
     return dict(calls=calls, results=results, compacts=compacts, prompts=prompts,
-                uses=uses)
+                uses=uses, events=events)
 
 
 def load_session(main_path, cutoff, main_only, stats):
@@ -699,7 +791,13 @@ def summarize(path, P, seen=None):
                 sub_share=(sub or 0) / total if total else 0, calls=len(calls),
                 avg_ctx=statistics.mean(ctx) if ctx else 0, peak=max(mctx),
                 solo=solo / len(with_tools) if with_tools else 0,
-                compacts=len(main["compacts"]), cold=cold, bash=bash, dropped=dropped)
+                compacts=len(main["compacts"]), cold=cold, bash=bash, dropped=dropped,
+                **tdd_metrics(threads))
+
+
+def red_cell(r):
+    n = r["source_files"]
+    return f"{r['red_first'] / n:.0%} ({r['red_first']}/{n})" if n else "–"
 
 
 TREND_RULES = [   # (pattern, test, where the lesson usually goes)
@@ -710,6 +808,9 @@ TREND_RULES = [   # (pattern, test, where the lesson usually goes)
      "handoff before idling"),
     ("Bash > 50% of result chars", lambda r: r["bash"] > 0.50, "bounded shell output"),
     ("compacted at least once", lambda r: r["compacts"] > 0, "handoff before auto-compact"),
+    ("red-first < 50%", lambda r: bool(r["source_files"]) and r["red_first"] / r["source_files"] < 0.5,
+     "ckore-tdd, build worker brief"),
+    ("tests weakened", lambda r: r["weakened"] > 0, "a skip/.only hook (ckore-correct)"),
 ]
 
 
@@ -776,17 +877,17 @@ def trend(n, exclude, P, pnote):
     print("- excluded: the current session" + (f", paths matching /{exclude}/" if exclude else ""))
     print()
     print("| last active | project | cost | sub share | calls | avg ctx | peak main | 1-tool "
-          "| compact | cold $ | Bash chars |")
-    print("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
+          "| compact | cold $ | Bash chars | red-first | weakened |")
+    print("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
     ok = [r for r in rows if "fatal" not in r]
     for r in rows:
         if "fatal" in r:
-            print(f"| | {os.path.basename(r['path'])} | SCHEMA CHECK FAILED, run it alone | | | | | | | | |")
+            print(f"| | {os.path.basename(r['path'])} | SCHEMA CHECK FAILED, run it alone | | | | | | | | | | |")
             continue
         when = r["when"].strftime("%Y-%m-%d") if r["when"] else "?"
         print(f"| {when} | {r['project']} | {usd(r['total'])} | {r['sub_share']:.0%} | {r['calls']} "
               f"| {r['avg_ctx'] / 1000:,.0f}k | {r['peak'] / 1000:,.0f}k | {r['solo']:.0%} "
-              f"| {r['compacts']} | {usd(r['cold'])} | {r['bash']:.0%} |")
+              f"| {r['compacts']} | {usd(r['cold'])} | {r['bash']:.0%} | {red_cell(r)} | {r['weakened']} |")
     print()
     print(f"total {usd(ssum(r['total'] for r in ok))} over {len(ok)} sessions, "
           f"{sum(r['calls'] for r in ok)} API calls")
