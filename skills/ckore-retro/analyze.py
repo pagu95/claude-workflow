@@ -136,29 +136,46 @@ def tool_label(b):
 
 
 EDIT_TOOLS = {"Edit", "Write", "MultiEdit"}
-TEST_CMD = re.compile(r"\b(pytest|jest|vitest|mocha|go test|cargo test|unittest|node --test|deno test|playwright test|ng test|karma"
-                      r"|(?:npm|pnpm|yarn|bun)(?: run)? test)\b")
-FAIL_TEXT = re.compile(r"\b\d+ (failed|failing)\b|\bFAILED\b|\bFAIL\b|[✕✖]|(?:ℹ|#) fail [1-9]")
+SHELL_TOOLS = {"Bash", "PowerShell"}
+CMD_START = r"(?:^|[;&|\n(])\s*(?:\w+=\S*\s+)*(?:(?:timeout|time)\s+(?:\d+\s+)?)?"
+TEST_CMD = re.compile(CMD_START + r"(?:(?:python3?|py)(?:\s+-\w+)*\s+-m\s+|(?:npx|bunx|pnpx|uv run|poetry run)\s+)?"
+                      r"(pytest|jest|vitest|mocha|go test|cargo test|unittest|node --test|deno test|playwright test"
+                      r"|ng test|karma|(?:npm|pnpm|yarn|bun)(?: run)? test)\b")
+FAIL_TEXT = re.compile(r"\b[1-9]\d* (failed|failing)\b|\bFAILED\b|\bFAIL\b|[✕✖]|(?:ℹ|#) fail [1-9]")
 TEST_FILE = re.compile(r"(^|[/\\])(tests?|__tests__)[/\\]|(^|[/\\])test_[^/\\]*$|_test\.\w+$|\.(test|spec)\.\w+$")
+TEST_NAME = re.compile(r"(^|[/\\])test_[^/\\]*\.\w+$|_test\.\w+$|\.(test|spec)\.\w+$")  # a file, not a folder
 SOURCE_EXT = re.compile(r"\.(py|js|mjs|cjs|jsx|ts|tsx|go|rs|java|kt|rb|cs|php|swift|vue|svelte|sh)$")
 SKIP_MARK = re.compile(r"\.only\(|\.skip\(|\bx(it|describe|test)\(|pytest\.mark\.skip|@unittest\.skip|\bt\.Skip\(")
 ASSERTION = re.compile(r"\bexpect\(|\bassert|\bself\.assert")
-RM_CMD = re.compile(r"\b(?:git )?rm\b(?:\s+-\S+)*((?:\s+[^\s;&|]+)+)")
+RM_CMD = re.compile(CMD_START + r"(?:git\s+)?rm\b((?:[ \t]+[^\s;&|]+)+)")
 COPY_CMD = re.compile(r"\b(?:cp|mv)\b(?:\s+-\S+)*\s+(\"[^\"]*\"|'[^']*'|\S+)\s+[\"']?([^\s;&|\"']+)")
 REDIRECT = re.compile(r">\s*[\"']?([^\s;&|\"'>]+)")
 
 
+def norm_path(p):
+    """Comparable form of a path written by a tool (absolute, Windows) or a shell (relative, /c/...)."""
+    p = p.strip("\"'").replace("\\", "/")
+    return re.sub(r"^(?:[A-Za-z]:|/[A-Za-z](?=/))", "", p).removeprefix("./").lower()
+
+
+def same_file(a, b):
+    return a == b or a.endswith("/" + b) or b.endswith("/" + a)
+
+
 def file_ops(cmd):
     """("create" | "rm", path) for test files a shell command copies or redirects into place or
-    removes, in order."""
+    removes, in order. `git rm --cached` only untracks, so it is not a removal."""
     ops = [(m.start(), "create", m.group(1)) for m in REDIRECT.finditer(cmd)]
     for m in COPY_CMD.finditer(cmd):
         dest = m.group(2)
         if dest.endswith(("/", "\\")):
             dest += re.split(r"[/\\]", m.group(1).strip("\"'"))[-1]
         ops.append((m.start(), "create", dest))
-    ops += [(m.start(), "rm", p) for m in RM_CMD.finditer(cmd) for p in m.group(1).split()]
-    return [(kind, p) for _, kind, p in sorted(ops) if TEST_FILE.search(p)]
+    for m in RM_CMD.finditer(cmd):
+        args = m.group(1).split()
+        if "--cached" not in args:
+            ops += [(m.start(), "rm", p) for p in args if not p.startswith("-")]
+    return [(kind, norm_path(p)) for _, kind, p in sorted(ops) if TEST_NAME.search(p.strip("\"'"))]
 
 
 def result_text(content):
@@ -177,22 +194,26 @@ def edit_pairs(name, inp):
 
 
 def weakens(old, new):
+    """Adds a skip/only marker, or removes every assertion the old text had. Counting assertions
+    would flag merging two asserts into one."""
     if len(SKIP_MARK.findall(new)) > len(SKIP_MARK.findall(old or "")):
         return True
-    return old is not None and len(ASSERTION.findall(new)) < len(ASSERTION.findall(old))
+    return bool(old) and bool(ASSERTION.search(old)) and not ASSERTION.search(new)
 
 
 def tdd_metrics(threads):
-    """Red-first and weakened-test counts over all threads.
+    """Red-first and weakened-test counts, in total and per thread.
 
     A source file is red-first when, before its first edit in that thread, a test file was edited and
     a test command then failed; a passing run ends that red. Weakened: an edit to a test file that adds
-    a skip/only marker or removes assertions, or a test file deleted with rm / git rm, unless the same
-    thread wrote or copied it there first (a temporary copy run against old code is a check, not a loss)."""
+    a skip/only marker or removes all its assertions, or a test file deleted with rm / git rm, unless the
+    same thread wrote or copied it there first (a temporary copy run against old code is a check)."""
     red_first = source = weakened = 0
-    for th in threads.values():
+    per = {}
+    for name, th in threads.items():
         armed = red = False
         seen, created = set(), set()
+        t_red = t_src = 0
         for ev in th.get("events", []):
             if ev[0] == "test":
                 red = armed and ev[1]
@@ -201,19 +222,23 @@ def tdd_metrics(threads):
                 created.add(ev[1])
                 continue
             if ev[0] == "rm":
-                weakened += ev[1] not in created
+                weakened += not any(same_file(ev[1], c) for c in created)
                 continue
             _, path, pairs = ev
             if any(o is None for o, _ in pairs):
-                created.add(path)
+                created.add(norm_path(path))
             if TEST_FILE.search(path):
-                armed, red = True, False
+                armed = True
                 weakened += any(weakens(o, n) for o, n in pairs)
             elif SOURCE_EXT.search(path) and path not in seen:
                 seen.add(path)
-                source += 1
-                red_first += red
-    return dict(red_first=red_first, source_files=source, weakened=weakened)
+                t_src += 1
+                t_red += red
+        if t_src:
+            per[name] = (t_red, t_src)
+        red_first += t_red
+        source += t_src
+    return dict(red_first=red_first, source_files=source, weakened=weakened, threads=per)
 
 
 def usage_tokens(u, stats):
@@ -323,9 +348,10 @@ def parse(path, thread, cutoff, stats):
                 inp = b.get("input") or {}
                 if b.get("name") in EDIT_TOOLS and inp.get("file_path"):
                     events.append(("edit", inp["file_path"], edit_pairs(b.get("name"), inp)))
-                if b.get("name") == "Bash":
+                if b.get("name") in SHELL_TOOLS:
                     cmd = inp.get("command", "")
-                    call["cmds"].append(cmd)
+                    if b.get("name") == "Bash":
+                        call["cmds"].append(cmd)
                     if TEST_CMD.search(cmd):
                         test_runs.add(b.get("id"))
                     events.extend(file_ops(cmd))
@@ -638,6 +664,15 @@ def report(main_path, threads, stats, fatal, warn, P, pnote, cutoff, cut_reason,
         dupes = len(cmds) - len(set(cmds))
         if dupes:
             out(f"exact duplicate commands: {dupes} of {len(cmds)}")
+    out()
+
+    # -- test discipline
+    tdd = tdd_metrics(threads)
+    out("## Test discipline")
+    out()
+    out(f"red-first: {red_cell(tdd)}; tests weakened: {tdd['weakened']}")
+    for name, (red, src) in tdd["threads"].items():
+        out(f"- {threads[name].get('label', name)}: {red}/{src} source files red-first")
     out()
 
     # -- tool results: what fills the context

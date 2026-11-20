@@ -91,6 +91,31 @@ class RedFirst(unittest.TestCase):
              .edit("src/x.js").metrics())
         self.assertEqual(m["red_first"], 0)
 
+    def test_a_passing_cargo_run_is_not_red(self):
+        m = (Transcript().edit("tests/x_test.rs")
+             .tool("Bash", {"command": "cargo test"}, "test result: ok. 5 passed; 0 failed; 0 ignored")
+             .edit("src/x.rs").metrics())
+        self.assertEqual(m["red_first"], 0)
+
+    def test_a_failing_run_in_powershell_is_red(self):
+        m = (Transcript().edit("tests/test_x.py")
+             .tool("PowerShell", {"command": "python -m pytest tests"}, "1 failed", is_error=True)
+             .edit("src/x.py").metrics())
+        self.assertEqual(m["red_first"], 1)
+
+    def test_a_command_that_only_mentions_a_runner_does_not_end_the_red(self):
+        m = (Transcript().edit("tests/test_x.py").test(failed=True)
+             .tool("Bash", {"command": "pip install pytest"}).edit("src/x.py").metrics())
+        self.assertEqual(m["red_first"], 1)
+
+    def test_fixing_the_test_after_it_ran_red_keeps_the_red(self):
+        m = Transcript().edit("tests/test_x.py").test(failed=True).edit("tests/test_x.py").edit("src/x.py").metrics()
+        self.assertEqual(m["red_first"], 1)
+
+    def test_counts_are_also_split_per_thread(self):
+        m = Transcript().edit("tests/test_x.py").test(failed=True).edit("src/x.py").edit("src/y.py").metrics()
+        self.assertEqual(m["threads"], {"main": (2, 2)})
+
     def test_a_failure_without_a_test_edit_first_is_not_red(self):
         m = Transcript().test(failed=True).edit("src/x.py").metrics()
         self.assertEqual(m["red_first"], 0)
@@ -105,9 +130,27 @@ class Weakened(unittest.TestCase):
         m = Transcript().edit("tests/test_x.py", "def test_a():", "@pytest.mark.skip\ndef test_a():").metrics()
         self.assertEqual(m["weakened"], 1)
 
-    def test_removing_an_assertion_counts(self):
-        m = Transcript().edit("tests/test_x.py", "assert a == 1\nassert b == 2", "assert a == 1").metrics()
+    def test_removing_every_assertion_in_an_edit_counts(self):
+        m = Transcript().edit("tests/test_x.py", "assert a == 1\nassert b == 2", "pass").metrics()
         self.assertEqual(m["weakened"], 1)
+
+    def test_merging_two_assertions_into_one_does_not_count(self):
+        m = Transcript().edit("tests/test_x.py", "assert a == 1\nassert b == 2",
+                              "self.assertEqual((a, b), (1, 2))").metrics()
+        self.assertEqual(m["weakened"], 0)
+
+    def test_cleanup_commands_that_are_not_test_deletions_do_not_count(self):
+        for cmd in ("docker run --rm -v x:/app img pytest tests/test_x.py",
+                    "rm -f out.log\npytest tests/test_x.py",
+                    "rm -rf tests/__pycache__",
+                    "git rm --cached tests/test_x.py"):
+            with self.subTest(cmd=cmd):
+                self.assertEqual(Transcript().tool("Bash", {"command": cmd}).metrics()["weakened"], 0)
+
+    def test_removing_a_test_written_by_absolute_path_does_not_count(self):
+        m = (Transcript().tool("Write", {"file_path": "C:\\work\\app\\test\\x.test.js", "content": "it('a')"})
+             .tool("Bash", {"command": "rm test/x.test.js"}).metrics())
+        self.assertEqual(m["weakened"], 0)
 
     def test_deleting_a_test_file_counts(self):
         m = Transcript().tool("Bash", {"command": "git rm tests/test_x.py"}).metrics()

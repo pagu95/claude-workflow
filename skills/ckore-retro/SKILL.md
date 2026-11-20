@@ -60,7 +60,7 @@ Then diagnose. The recurring drivers, in order of size across measured sessions:
 Give each lever in dollars and say the estimates overlap rather than add up.
 
 Then the two quality columns, which are counts, not dollars:
-- **red-first**: source files whose first edit came after a test-file edit and a failing test run. Below 50% across sessions points at `ckore-tdd` or the build worker brief. A runner the script doesn't recognise, or output only read later from a log file, reads as "not red": check the session's test commands before calling it a lesson.
+- **red-first**: source files whose first edit came after a test-file edit and a failing test run. Below 50% across sessions points at `ckore-tdd` or the build worker brief. The one-session report splits it per thread, so build workers show apart from the main thread. A runner the script doesn't recognise, or output only read later from a log file, reads as "not red": check the session's test commands before calling it a lesson.
 - **weakened**: added skip/.only markers, removed assertions, deleted test files (not temporary copies the same thread put there). Any hit in 2+ sessions is the case for a skip/.only hook through `ckore-correct`.
 - **`--smells`**: a smell found on 2+ branches is a lesson candidate for the area `CLAUDE.md` or a `ckore-refactor` sweep, routed like any other pattern.
 
