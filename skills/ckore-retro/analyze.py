@@ -12,6 +12,8 @@ Usage:
   python3 analyze.py --last N [--exclude REGEX]
                                         # one line per session for the N most recently
                                         # active sessions, then the patterns that repeat
+                                        # (incl. red-first % and weakened tests)
+  python3 analyze.py --smells [DAYS]    # ckore-review findings per smell (default 30 days)
 Options:
   --prices FILE    rates file (default: prices.json next to this script)
   --cutoff ISO     ignore calls at/after this timestamp; 'none' disables.
@@ -901,6 +903,52 @@ def trend(n, exclude, P, pnote):
         print(f"| {label} | {len(hit)}/{len(ok)} | {usd(ssum(r['total'] for r in hit))} | {hint} |")
 
 
+SMELL_LOG = os.path.expanduser("~/.claude/retro/smells.jsonl")
+
+
+def smell_summary(path, days, now):
+    """([(smell, findings, branches, flagged)], bad lines) over the last `days`, from the log
+    `ckore-review` appends to; None when there is no log. Flagged: found on 2+ distinct branches."""
+    try:
+        lines = open(path, encoding="utf-8").read().splitlines()
+    except OSError:
+        return None
+    since = (now - datetime.timedelta(days=days)).date()
+    found, branches, bad = collections.Counter(), collections.defaultdict(set), 0
+    for line in filter(str.strip, lines):
+        try:
+            d = json.loads(line)
+            when = datetime.date.fromisoformat(str(d["date"])[:10])
+            smell = d["smell"]
+        except (ValueError, KeyError, TypeError):
+            bad += 1
+            continue
+        if when >= since:
+            found[smell] += 1
+            branches[smell].add((d.get("repo"), d.get("branch")))
+    rows = [(s, n, len(branches[s]), len(branches[s]) >= 2)
+            for s, n in sorted(found.items(), key=lambda x: (-x[1], x[0]))]
+    return rows, bad
+
+
+def smells(days):
+    now = datetime.datetime.now(datetime.timezone.utc)
+    got = smell_summary(SMELL_LOG, days, now)
+    if got is None:
+        print(f"no smell log yet ({SMELL_LOG}); ckore-review writes it")
+        return
+    rows, bad = got
+    print(f"# Review smells: last {days} days")
+    print()
+    print("| smell | findings | branches | 2+ branches |")
+    print("|---|---:|---:|---|")
+    for s, n, b, flag in rows:
+        print(f"| {s} | {n} | {b} | {'yes' if flag else ''} |")
+    if bad:
+        print()
+        print(f"skipped {bad} malformed line(s)")
+
+
 def main():
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -908,6 +956,11 @@ def main():
     opt = lambda k: args[args.index(k) + 1] if k in args and args.index(k) + 1 < len(args) else None
     if "--list" in args:
         return list_sessions()
+    if "--smells" in args:
+        days = opt("--smells")
+        if days is not None and not days.isdigit():
+            die(2, "--smells takes a number of days")
+        return smells(int(days or 30))
     if "--family" in args:
         ids = [a for a in args[args.index("--family") + 1:] if not a.startswith("-")]
         if not ids:

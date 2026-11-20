@@ -164,5 +164,35 @@ class TrendRow(unittest.TestCase):
         self.assertTrue(rules["tests weakened"](dict(base, red_first=0, source_files=0, weakened=1)))
 
 
+class SmellLog(unittest.TestCase):
+    NOW = analyze.ts("2026-11-20T12:00:00Z")
+
+    def log(self, *lines):
+        path = os.path.join(tempfile.mkdtemp(), "smells.jsonl")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("\n".join(x if isinstance(x, str) else json.dumps(x) for x in lines) + "\n")
+        return path
+
+    def row(self, smell, branch, date="2026-11-18", kind="judgement"):
+        return dict(date=date, repo="shop-web", branch=branch, smell=smell, kind=kind)
+
+    def test_counts_per_smell_and_flags_two_or_more_branches(self):
+        path = self.log(self.row("duplicated-logic", "a"), self.row("duplicated-logic", "b"),
+                        self.row("mysterious-name", "a"), self.row("mysterious-name", "a"))
+        rows, bad = analyze.smell_summary(path, 30, self.NOW)
+        self.assertEqual(rows, [("duplicated-logic", 2, 2, True), ("mysterious-name", 2, 1, False)])
+        self.assertEqual(bad, 0)
+
+    def test_skips_old_and_malformed_lines_and_counts_the_bad_ones(self):
+        path = self.log(self.row("duplicated-logic", "a", date="2026-09-01"), "{not json",
+                        self.row("mysterious-name", "a"))
+        rows, bad = analyze.smell_summary(path, 30, self.NOW)
+        self.assertEqual(rows, [("mysterious-name", 1, 1, False)])
+        self.assertEqual(bad, 1)
+
+    def test_missing_log_is_none(self):
+        self.assertIsNone(analyze.smell_summary(os.path.join(tempfile.mkdtemp(), "nope.jsonl"), 30, self.NOW))
+
+
 if __name__ == "__main__":
     unittest.main()
