@@ -150,6 +150,8 @@ ASSERTION = re.compile(r"\bexpect\(|\bassert|\bself\.assert")
 RM_CMD = re.compile(CMD_START + r"(?:git\s+)?rm\b((?:[ \t]+[^\s;&|]+)+)")
 COPY_CMD = re.compile(r"\b(?:cp|mv)\b(?:\s+-\S+)*\s+(\"[^\"]*\"|'[^']*'|\S+)\s+[\"']?([^\s;&|\"']+)")
 REDIRECT = re.compile(r">\s*[\"']?([^\s;&|\"'>]+)")
+CHECKOUT_CMD = re.compile(r"\bgit\s+(?:-C\s+(?:\"[^\"]*\"|'[^']*'|\S+)\s+)?checkout\s+(?:-\S+\s+)*"
+                          r"[^\s;&|-][^\s;&|]*\s+--((?:[ \t]+[^\s;&|]+)+)")  # needs a ref: without one it discards
 
 
 def norm_path(p):
@@ -171,6 +173,8 @@ def file_ops(cmd):
         if dest.endswith(("/", "\\")):
             dest += re.split(r"[/\\]", m.group(1).strip("\"'"))[-1]
         ops.append((m.start(), "create", dest))
+    for m in CHECKOUT_CMD.finditer(cmd):  # `git checkout <ref> -- <paths>` puts another branch's file in place
+        ops += [(m.start(), "create", p) for p in m.group(1).split()]
     for m in RM_CMD.finditer(cmd):
         args = m.group(1).split()
         if "--cached" not in args:
