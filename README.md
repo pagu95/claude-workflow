@@ -22,6 +22,7 @@ It works in the Claude Code CLI and the desktop app.
 | `ckore-retro` | Measures real session cost (subagents included, dated prices), finds patterns across sessions, tracks lessons in `~/.claude/retro/LESSONS.md` |
 | `ckore-unslop` | Short, plain text for PRs, commits and proposals |
 | `ckore-context-trim` | Measures what a session loads before any work, sorts it by real usage, trims per repo and asks before account-wide changes |
+| `ckore-clean-worktrees` | Frees disk: one script removes provably safe leftover worktrees across all repos, then one table and one question for the rest |
 
 Every skill is named `ckore-<name>`, so none clashes with a Claude Code built-in (Claude Code has its own resume and design commands) or with another plugin's skill.
 
@@ -76,7 +77,7 @@ Costs and counts in the skills, `CLAUDE.md` and the hooks README were measured o
 ## Tests
 
 ```bash
-python -I -m unittest discover tests   # skill names, installer, project-name parsing, leak check
+python -I -m unittest discover tests   # skill names, installer, project-name parsing, leak check, worktree sweep
 python -I -m unittest discover hooks
 ```
 
