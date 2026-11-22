@@ -150,7 +150,8 @@ ASSERTION = re.compile(r"\bexpect\(|\bassert|\bself\.assert")
 RM_CMD = re.compile(CMD_START + r"(?:git\s+)?rm\b((?:[ \t]+[^\s;&|]+)+)")
 COPY_CMD = re.compile(r"\b(?:cp|mv)\b(?:\s+-\S+)*\s+(\"[^\"]*\"|'[^']*'|\S+)\s+[\"']?([^\s;&|\"']+)")
 REDIRECT = re.compile(r">\s*[\"']?([^\s;&|\"'>]+)")
-CHECKOUT_CMD = re.compile(r"\bgit\s+(?:-C\s+\S+\s+)?(?:checkout|restore)\b[^;&|\n]*?\s--((?:[ \t]+[^\s;&|]+)+)")
+CHECKOUT_CMD = re.compile(r"\bgit\s+(?:-C\s+(?:\"[^\"]*\"|'[^']*'|\S+)\s+)?checkout\s+(?:-\S+\s+)*"
+                          r"[^\s;&|-][^\s;&|]*\s+--((?:[ \t]+[^\s;&|]+)+)")  # needs a ref: without one it discards
 
 
 def norm_path(p):
