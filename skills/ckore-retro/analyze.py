@@ -148,8 +148,9 @@ SOURCE_EXT = re.compile(r"\.(py|js|mjs|cjs|jsx|ts|tsx|go|rs|java|kt|rb|cs|php|sw
 SKIP_MARK = re.compile(r"\.only\(|\.skip\(|\bx(it|describe|test)\(|pytest\.mark\.skip|@unittest\.skip|\bt\.Skip\(")
 ASSERTION = re.compile(r"\bexpect\(|\bassert|\bself\.assert")
 RM_CMD = re.compile(CMD_START + r"(?:git\s+)?rm\b((?:[ \t]+[^\s;&|]+)+)")
-COPY_CMD = re.compile(r"\b(?:cp|mv)\b(?:\s+-\S+)*\s+(\"[^\"]*\"|'[^']*'|\S+)\s+[\"']?([^\s;&|\"']+)")
-REDIRECT = re.compile(r">\s*[\"']?([^\s;&|\"'>]+)")
+COPY_CMD = re.compile(r"\b(?:cp|mv)\b(?:\s+-\S+)*\s+(\"[^\"]*\"|'[^']*'|\S+)\s+(\"[^\"\n]+\"|'[^'\n]+'|[^\s;&|\"']+)")
+REDIRECT = re.compile(r">\s*(\"[^\"\n]+\"|'[^'\n]+'|[^\s;&|\"'>]+)")
+SHELL_ARG = re.compile(r"\"[^\"]*\"|'[^']*'|\S+")  # a quoted path may hold a space
 CHECKOUT_CMD = re.compile(r"\bgit\s+(?:-C\s+(?:\"[^\"]*\"|'[^']*'|\S+)\s+)?checkout\s+(?:-\S+\s+)*"
                           r"[^\s;&|-][^\s;&|]*\s+--((?:[ \t]+[^\s;&|]+)+)")  # needs a ref: without one it discards
 
@@ -169,14 +170,14 @@ def file_ops(cmd):
     removes, in order. `git rm --cached` only untracks, so it is not a removal."""
     ops = [(m.start(), "create", m.group(1)) for m in REDIRECT.finditer(cmd)]
     for m in COPY_CMD.finditer(cmd):
-        dest = m.group(2)
+        dest = m.group(2).strip("\"'")
         if dest.endswith(("/", "\\")):
             dest += re.split(r"[/\\]", m.group(1).strip("\"'"))[-1]
         ops.append((m.start(), "create", dest))
     for m in CHECKOUT_CMD.finditer(cmd):  # `git checkout <ref> -- <paths>` puts another branch's file in place
-        ops += [(m.start(), "create", p) for p in m.group(1).split()]
+        ops += [(m.start(), "create", p) for p in SHELL_ARG.findall(m.group(1))]
     for m in RM_CMD.finditer(cmd):
-        args = m.group(1).split()
+        args = SHELL_ARG.findall(m.group(1))
         if "--cached" not in args:
             ops += [(m.start(), "rm", p) for p in args if not p.startswith("-")]
     return [(kind, norm_path(p)) for _, kind, p in sorted(ops) if TEST_NAME.search(p.strip("\"'"))]
