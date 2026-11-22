@@ -193,13 +193,24 @@ class Weakened(unittest.TestCase):
         m = t.tool("Bash", {"command": 'rm "C:/a b/wt/tests/unit/zzScratch.test.ts"'}).metrics()
         self.assertEqual(m["weakened"], 0)
 
-    def test_deleting_a_tracked_test_by_a_quoted_path_with_a_space_counts_once(self):
-        m = Transcript().tool("Bash", {"command": 'rm "C:/a b/wt/tests/unit/x.test.ts"'}).metrics()
+    def test_a_scratch_copy_does_not_excuse_a_same_named_test_under_another_spaced_path(self):
+        t = Transcript().tool("Bash", {"command": 'echo x > "C:/c b/t/x.test.ts"'})
+        m = t.tool("Bash", {"command": 'rm "C:/a b/t/x.test.ts" "C:/c b/t/x.test.ts"'}).metrics()
         self.assertEqual(m["weakened"], 1)
+
+    def test_a_checkout_of_a_quoted_path_with_a_space_is_a_copy(self):
+        t = Transcript().tool("Bash", {"command": 'git checkout main -- "a b/x.test.ts"'})
+        m = t.tool("Bash", {"command": 'rm "a b/x.test.ts"'}).metrics()
+        self.assertEqual(m["weakened"], 0)
 
     def test_removing_a_test_copied_into_its_directory_does_not_count(self):
         m = (Transcript().tool("Bash", {"command": 'cp "/tmp/a b/x.test.js" test/'})
              .tool("Bash", {"command": "rm test/x.test.js"}).metrics())
+        self.assertEqual(m["weakened"], 0)
+
+    def test_removing_a_test_copied_to_a_quoted_path_with_a_space_does_not_count(self):
+        m = (Transcript().tool("Bash", {"command": 'cp /tmp/x.test.js "C:/a b/wt/test/x.test.js"'})
+             .tool("Bash", {"command": 'rm "C:/a b/wt/test/x.test.js"'}).metrics())
         self.assertEqual(m["weakened"], 0)
 
     def test_removing_a_test_written_earlier_in_the_thread_does_not_count(self):
