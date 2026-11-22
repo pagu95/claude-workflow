@@ -167,6 +167,12 @@ class Weakened(unittest.TestCase):
                                                   "rm test/x.test.js"}).metrics()
         self.assertEqual(m["weakened"], 0)
 
+    def test_removing_a_test_checked_out_from_another_branch_does_not_count(self):
+        # The night Hat's fake-green check: the PR's new test on the base branch, removed after the run.
+        t = Transcript().tool("Bash", {"command": "git checkout origin/night/x -- tests/unit/x.test.ts"})
+        m = t.tool("Bash", {"command": "npx jest tests/unit/x.test.ts; rm tests/unit/x.test.ts"}).metrics()
+        self.assertEqual(m["weakened"], 0)
+
     def test_removing_a_test_copied_into_its_directory_does_not_count(self):
         m = (Transcript().tool("Bash", {"command": 'cp "/tmp/a b/x.test.js" test/'})
              .tool("Bash", {"command": "rm test/x.test.js"}).metrics())
