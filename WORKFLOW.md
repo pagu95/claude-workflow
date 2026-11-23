@@ -65,7 +65,7 @@ Done when: a test that fails today passes, and the PR touches only the files the
 | Before the PR | `ckore-review` |
 | PR body, commit, proposal, CLAUDE.md text | `ckore-unslop` |
 | The same correction a second time | `/ckore-correct` |
-| Once a week, or after a session over ~$50 (from a fresh session) | `/ckore-retro` (trend), or `/ckore-retro <session id>` |
+| Once a week, or after a session over ~$50 (from a fresh session) | `/ckore-retro` (cost and quality trend), `/ckore-retro <session id>`, or only one pass: `/ckore-retro cost`, `/ckore-retro quality` |
 | A repo's sessions start over ~60k tokens, or after adding plugins or connectors | `/ckore-context-trim` |
 | The disk is filling up, or a batch or worktree failed for lack of space | `/ckore-clean-worktrees` |
 

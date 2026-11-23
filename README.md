@@ -19,7 +19,7 @@ It works in the Claude Code CLI and the desktop app.
 | `ckore-handoff` | Phase-boundary check, plus a short handoff file when needed |
 | `ckore-resume` | Pick up after a break or a handoff: reconcile the trail with live state, one next action |
 | `ckore-correct` | Turns repeated corrections into hooks, tests or lints |
-| `ckore-retro` | Measures real session cost (subagents included, dated prices), finds patterns across sessions, tracks lessons in `~/.claude/retro/LESSONS.md` |
+| `ckore-retro` | Measures real session cost (subagents included, dated prices) and counts what went wrong (undone work, review-fix commits, hook blocks, failed tool calls), finds patterns across sessions, tracks lessons in `~/.claude/retro/LESSONS.md` |
 | `ckore-unslop` | Short, plain text for PRs, commits and proposals |
 | `ckore-context-trim` | Measures what a session loads before any work, sorts it by real usage, trims per repo and asks before account-wide changes |
 | `ckore-clean-worktrees` | Frees disk: one script removes provably safe leftover worktrees across all repos, then one table and one question for the rest |
