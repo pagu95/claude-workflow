@@ -21,33 +21,42 @@ sys.path.insert(0, HERE)
 import analyze  # noqa: E402
 
 HEREDOC = re.compile(r"<<-?\s*(['\"]?)(\w+)\1[^\n]*\n.*?\n[ \t]*\2\b", re.S)
-QUOTED = re.compile(r"\"(?:[^\"\\]|\\.)*\"|'[^']*'")
+QUOTED = re.compile(r"\"(?:[^\"\\]|\\.)*\"|(?<!\w)'[^']*'")   # the apostrophe in "don't" opens nothing
+SEPARATOR = re.compile(r"&&|\|\||;|\|")
 GIT = analyze.CMD_START + r"git\s+(?:-C\s+\S+\s+)?"
 UNDONE = re.compile(GIT + r"(?:revert\b(?!\s+--(?:abort|quit|continue))"   # a commit taken back
                           r"|reset\b[^;&|\n]*--hard\b"                      # commits or edits thrown away
-                          r"|checkout\s+(?:--\s+\S|\.(?:\s|$))"             # edits thrown away (no ref given)
+                          r"|checkout\s+(?:HEAD\s+)?(?:--\s+\S|\.(?:\s|$))"  # edits thrown away (no other ref)
                           r"|restore\b(?![^;&|\n]*--staged)\s+\S)")
 COMMIT = re.compile(GIT + r"commit\b")
-RAW_COMMIT = re.compile(r"\bgit\s+(?:-C\s+(?:\"[^\"]*\"|'[^']*'|\S+)\s+)?commit\b")
 FIX_MESSAGE = re.compile(r"--fixup\b|--squash\b|fixup!|\breview[ -]fix|\baddress(?:es|ed|ing)?\s+(?:the\s+)?review"
                          r"|\breview\s+(?:comments|feedback|findings)\b", re.I)
-HOOK_BLOCK = re.compile(r"\s*(?:Error:\s*)?\w+:(\w+) hook error: \[(?:command )?([^\]]*)\]")
-DENIED = re.compile(r"\s*(?:Error:\s*)?Permission\b.{0,80}\bdenied\b|doesn't want to proceed|tool use was rejected", re.S)
+HOOK_BLOCK = re.compile(r"\s*(?:Error:\s*)?\w+:(\w+) hook error: \[([^\]]*)\]")
+HOOK_POSITION = re.compile(r"hook \d+$")
+# The permission system's own wording, at the start of the result: an OS "Permission denied" is a failed call.
+DENIED = re.compile(r"\s*(?:Error:\s*)?Permission for this .{0,40}denied by\b")
+USER_REFUSED = re.compile(r"doesn't want to proceed|tool use was rejected")
 INTERRUPTED = "[Request interrupted by user"
+AT_A_TOOL_PROMPT = INTERRUPTED + " for tool use"   # logged next to the refused call, which already counts as denied
 MANY_BLOCKS = 3          # the same hook blocking this often in one session is a pattern, not a slip
 FAILED_SHARE = 0.10
 
 
 def strip_text(cmd):
-    """The command without heredoc bodies and quoted strings, so a `git revert` that is only
-    written into a file, echoed or searched for is not read as one that ran."""
-    return QUOTED.sub("Q", HEREDOC.sub(" ", cmd))
+    """The command with heredoc bodies and quoted strings blanked out, at the same length, so a
+    `git revert` that is only written into a file, echoed or searched for is not read as one that ran."""
+    return QUOTED.sub(lambda m: "Q" * len(m.group(0)), HEREDOC.sub(lambda m: " " * len(m.group(0)), cmd))
 
 
 def is_fix_commit(cmd):
-    """A commit whose message says it answers a review, or a fixup/squash commit."""
-    raw = RAW_COMMIT.search(cmd)
-    return bool(raw and COMMIT.search(strip_text(cmd)) and FIX_MESSAGE.search(cmd[raw.start():][:400]))
+    """A commit whose message says it answers a review, or a fixup/squash commit. Only the commit's
+    own segment is read, so review words in a later `gh pr comment` do not count."""
+    masked = strip_text(cmd)
+    commit = COMMIT.search(masked)
+    if not commit:
+        return False
+    end = SEPARATOR.search(masked, commit.end())
+    return bool(FIX_MESSAGE.search(cmd[commit.start():end.start() if end else None][:400]))
 
 
 def tool_name(name):
@@ -84,7 +93,7 @@ def scan(path, c, seen):
             text = content if isinstance(content, str) else " ".join(
                 b.get("text") or "" for b in blocks if b.get("type") == "text")
             key = ("record", d.get("uuid"))
-            if INTERRUPTED in text and key not in seen:
+            if INTERRUPTED in text and AT_A_TOOL_PROMPT not in text and key not in seen:
                 c["interrupted"] += 1
                 if d.get("uuid"):
                     seen.add(key)
@@ -97,8 +106,9 @@ def scan(path, c, seen):
                 out = analyze.result_text(b.get("content"))
                 hook = HOOK_BLOCK.match(out)
                 if hook:
-                    c["hook_blocks"][f"{hook.group(1)} {hook.group(2)}"] += 1
-                elif DENIED.match(out) or DENIED.search(out[:300]):
+                    position = HOOK_POSITION.search(hook.group(2))
+                    c["hook_blocks"][f"{hook.group(1)} {position.group(0) if position else 'hook ?'}"] += 1
+                elif DENIED.match(out) or USER_REFUSED.search(out[:300]):
                     c["denied"] += 1
                 elif not analyze.TEST_CMD.search(cmd):      # a red test run is the job, not a failure
                     c["failed"][tool_name(name)] += 1

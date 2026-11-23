@@ -103,6 +103,13 @@ class UndoneWork(unittest.TestCase):
              .bash("grep -rn 'git reset --hard' docs").counts())
         self.assertEqual(c["undone"], 0)
 
+    def test_discarding_edits_back_to_head_is_undone_work(self):
+        self.assertEqual(Transcript().bash("git checkout HEAD -- src/x.py").counts()["undone"], 1)
+
+    def test_an_apostrophe_in_a_word_does_not_hide_the_command_after_it(self):
+        c = Transcript().bash("echo don't && git revert abc && echo 'x'").counts()
+        self.assertEqual(c["undone"], 1)
+
     def test_powershell_commands_count_too(self):
         self.assertEqual(Transcript().tool("PowerShell", {"command": "git revert HEAD"}).counts()["undone"], 1)
 
@@ -118,6 +125,10 @@ class ReviewFixCommits(unittest.TestCase):
 
     def test_a_fixup_commit_is_counted(self):
         self.assertEqual(Transcript().bash("git commit --fixup abc123").counts()["fix_commits"], 1)
+
+    def test_review_words_in_the_command_after_the_commit_do_not_count(self):
+        c = Transcript().bash('git commit -m "Add x" && gh pr comment 7 -b "address review comments"').counts()
+        self.assertEqual(c["fix_commits"], 0)
 
     def test_an_ordinary_commit_is_not_counted(self):
         c = Transcript().bash('git commit -m "Add the review skill"').bash("git log --grep 'Review fixes'").counts()
@@ -139,8 +150,22 @@ class BlocksAndDenials(unittest.TestCase):
         self.assertEqual((c["denied"], sum(c["failed"].values())), (2, 0))
 
     def test_a_user_interruption_is_counted(self):
-        c = Transcript().bash("ls").prompt("[Request interrupted by user for tool use]").counts()
+        c = Transcript().bash("ls").prompt("[Request interrupted by user]").counts()
         self.assertEqual(c["interrupted"], 1)
+
+    def test_refusing_a_tool_call_is_one_denial_not_also_an_interruption(self):
+        c = (Transcript().tool("Edit", {"file_path": "a.py"}, "The user doesn't want to proceed with this tool use.",
+                               is_error=True).prompt("[Request interrupted by user for tool use]").counts())
+        self.assertEqual((c["denied"], c["interrupted"]), (1, 0))
+
+    def test_an_operating_system_permission_error_is_a_failed_call_not_a_denial(self):
+        c = (Transcript().bash("ls /root", "ls: cannot open directory '/root': Permission denied", is_error=True)
+             .bash("git push", "git@github.com: Permission denied (publickey).", is_error=True).counts())
+        self.assertEqual((c["denied"], dict(c["failed"])), (0, {"Bash": 2}))
+
+    def test_a_hook_label_that_is_not_a_position_is_not_printed(self):
+        c = Transcript().bash("x", f"PreToolUse:Bash hook error: [{SECRET}]: Blocked", is_error=True).counts()
+        self.assertEqual(dict(c["hook_blocks"]), {"Bash hook ?": 1})
 
 
 class FailedToolCalls(unittest.TestCase):

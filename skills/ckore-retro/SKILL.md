@@ -96,7 +96,7 @@ Save or update the project's **baseline** in memory: total, main vs subagent spl
 
 1. The trend table, or the one-session component split, with the total. With the quality pass, its table follows.
 2. Findings, worst first: the number, the cause, the lesson id. Costs in dollars, traps in sessions.
-3. Lessons checked: which `applied` ones moved and which didn't.
+3. Lessons checked: which `applied` ones moved and which didn't, and which traps recurred.
 4. One question: which proposed edits to apply.
 
 Be direct about waste, including your own. An unflattering number the user can act on is worth more than a flattering one.
