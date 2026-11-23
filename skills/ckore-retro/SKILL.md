@@ -1,7 +1,7 @@
 ---
 name: ckore-retro
-description: Measure what Claude Code sessions really cost from their transcripts (main thread and every subagent, priced per call from dated official rates), find the patterns that repeat across sessions, and turn each one into a tracked lesson in LESSONS.md plus the skill edit, CLAUDE.md note or hook it points at. Use for /ckore-retro, "how much did this cost", "why was this so expensive", "make the next session cheaper", or the weekly trend check.
-argument-hint: "empty for the trend over recent sessions, or a session id for one session"
+description: Measure what Claude Code sessions really cost from their transcripts (main thread and every subagent, priced per call from dated official rates), count what went wrong in them (undone work, review-fix commits, hook blocks, failed tool calls), find the patterns that repeat across sessions, and turn each one into a tracked lesson in LESSONS.md plus the skill edit, CLAUDE.md note or hook it points at. Use for /ckore-retro, "how much did this cost", "why was this so expensive", "make the next session cheaper", "what went wrong", "what keeps tripping us up", or the weekly trend check.
+argument-hint: "cost | quality (empty = both), then nothing for the trend over recent sessions, or a session id for one session"
 ---
 
 # Retro
@@ -17,15 +17,17 @@ python -I $A <sessionId>                     # one session in depth (prefix ok);
 python -I $A --list                          # recent sessions
 python -I $A --family <id|path> ...          # several sessions as one total, each API call once (forks re-list their parent's calls)
 python -I $A --smells [days]                 # ckore-review findings per smell, default 30 days
+Q=~/.claude/skills/ckore-retro/quality.py    # the quality pass: --last N, <sessionId> and --family as above
 ```
 
 Options for one session: `--cutoff <ISO>|none`, `--report <path>` (Markdown, only if the user wants a file), `--prices <file>`, `--main-only` (never quote it as a session total).
 
 ## 1. Pick the mode
 
+- **Which pass**, from the first argument. `cost`: `analyze.py` and this file, nothing else. `quality`: `quality.py`, read by [QUALITY.md](QUALITY.md). Empty: both scripts over the same sessions, then one table and one question. Read QUALITY.md only when the quality pass runs.
 - **Trend** (the default for `/ckore-retro`): `--last 10`. Use this weekly, or when the user asks "how are we doing". Lessons come from here, because a lesson needs the same pattern in 2+ sessions.
 - **One session**: when a session cost more than ~$50, or more than twice the baseline $/call, or a phase felt slow. Run it from a **fresh, small session** (retrospective mode). Running it at the end of a 500k-context session makes every analysis call re-read that context. The script's default cutoff stops it from measuring itself if you do.
-- **Skip** sessions under ~$5. They are noise, not lessons.
+- **Skip** sessions under ~$5 in the cost pass. They are noise, not lessons. The quality pass keeps them: a trap can be cheap.
 
 State which sessions you picked and why. Worktrees have their own project folder, so the newest transcript overall is often from another checkout. A desktop-app session (`local_<id>`) maps to its transcripts through `cliSessionId` plus `priorCliSessionIds` in `~/Library/Application Support/Claude/claude-code-sessions/**/local_<id>.json`. For a session family or sidebar group, pass all of those to `--family`: summing single runs counts a fork's copied history twice.
 
@@ -84,14 +86,16 @@ A coded check needs 2+ sessions and no false positives on the current code. Once
 
 Present the proposed rows and edits as one table and **ask before editing anything**. After approval, make the skill, hook and CLAUDE.md edits on a branch of the workflow repo, set each row to `applied` in `~/.claude/retro/LESSONS.md` with the commit, and put the numbers in the commit message. Prefer replacing or tightening an existing line over adding one. A rule cites its id as `(Ln)` and never retells the evidence; the evidence goes in the LESSONS row and the commit. When a lesson is verified, delete its row; when it is retired, or is a fact that stops a failed fix coming back, move it to the one-line "Don't retry" list, and check that list before proposing a fix. Keep Open at 12 rows or fewer: when over, close rows first (the 2-check rule above) before adding any.
 
+A pattern from the quality pass with no dollar headline is a **trap**. It goes in the ledger's Traps table (8 rows at most), with the number of sessions that showed it as its headline and "times it recurred" as its re-check. Everything else is the same: the 2+ sessions rule, the destination table, the 2-check rule, the ids. A trap that also has a measured cost stays in Open.
+
 CLAUDE.md is read by every session, so every line there has a cost. Each run, report its line count against the last run. Before a row leaves Open, handle every line anywhere that cites its `(Ln)`: in CLAUDE.md, delete the line if the lesson is retired or a hook or test now enforces it; if verified prose is still needed, keep it with a date instead of the id. The count should go down over time, not up.
 
 Save or update the project's **baseline** in memory: total, main vs subagent split, API calls, avg context per call, $/call, tools per call, and the `prices.json` date. Baselines are personal and project-specific; they never go into this repo. Never write a work project's name into `LESSONS.md`; use "work repo" instead.
 
 ## Reply (≤300 words)
 
-1. The trend table, or the one-session component split, with the total.
-2. Findings, worst first: the number, the cause, the lesson id.
+1. The trend table, or the one-session component split, with the total. With the quality pass, its table follows.
+2. Findings, worst first: the number, the cause, the lesson id. Costs in dollars, traps in sessions.
 3. Lessons checked: which `applied` ones moved and which didn't.
 4. One question: which proposed edits to apply.
 
