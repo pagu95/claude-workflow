@@ -29,6 +29,7 @@ UNDONE = re.compile(GIT + r"(?:revert\b(?!\s+--(?:abort|quit|continue))"   # a c
                           r"|checkout\s+(?:HEAD\s+)?(?:--\s+\S|\.(?:\s|$))"  # edits thrown away (no other ref)
                           r"|restore\b(?![^;&|\n]*--staged)\s+\S)")
 COMMIT = re.compile(GIT + r"commit\b")
+DISCARD = re.compile(r"\b(?:checkout|restore)\b")
 FIX_MESSAGE = re.compile(r"--fixup\b|--squash\b|fixup!|\breview[ -]fix|\baddress(?:es|ed|ing)?\s+(?:the\s+)?review"
                          r"|\breview\s+(?:comments|feedback|findings)\b", re.I)
 HOOK_BLOCK = re.compile(r"\s*(?:Error:\s*)?\w+:(\w+) hook error: \[([^\]]*)\]")
@@ -63,10 +64,13 @@ def tool_name(name):
     return name.split("__")[-1] if name.startswith("mcp__") else name
 
 
-def scan(path, c, seen):
+def scan(path, c, seen, subagent=False):
     """Add one transcript file's signals to `c`. `seen` holds the tool-use, result and record ids
-    already counted: a streamed call is logged more than once, and a fork re-lists its parent."""
+    already counted: a streamed call is logged more than once, and a fork re-lists its parent.
+    In a subagent that never commits (a reviewer), a discarded edit is a scratch check it cleaned
+    up, such as a fix taken out to watch its test fail, so it is not undone work."""
     uses = {}                    # tool_use id -> (name, command)
+    discards, committed = 0, False
     with open(path, encoding="utf-8", errors="replace") as f:
         lines = f.readlines()
     for line in lines:
@@ -87,7 +91,13 @@ def scan(path, c, seen):
                 seen.add(("use", b.get("id")))
                 c["tool_calls"] += 1
                 if name in analyze.SHELL_TOOLS:
-                    c["undone"] += len(UNDONE.findall(strip_text(cmd)))
+                    plain = strip_text(cmd)
+                    for m in UNDONE.finditer(plain):
+                        if DISCARD.search(m.group(0)):
+                            discards += 1
+                        else:
+                            c["undone"] += 1
+                    committed = committed or bool(COMMIT.search(plain))
                     c["fix_commits"] += is_fix_commit(cmd)
         elif d.get("type") == "user":
             text = content if isinstance(content, str) else " ".join(
@@ -112,6 +122,8 @@ def scan(path, c, seen):
                     c["denied"] += 1
                 elif not analyze.TEST_CMD.search(cmd):      # a red test run is the job, not a failure
                     c["failed"][tool_name(name)] += 1
+    if committed or not subagent:
+        c["undone"] += discards
 
 
 def session_counts(path, seen=None):
@@ -127,8 +139,9 @@ def session_counts(path, seen=None):
     c = dict(undone=0, fix_commits=0, hook_blocks=collections.Counter(), denied=0, interrupted=0,
              failed=collections.Counter(), tool_calls=0)
     seen = set() if seen is None else seen
-    for p in [path] + analyze.subagent_files(path):
-        scan(p, c, seen)
+    scan(path, c, seen)
+    for p in analyze.subagent_files(path):
+        scan(p, c, seen, subagent=True)
     tdd = analyze.tdd_metrics(threads)
     project = analyze.short_project(os.path.basename(os.path.dirname(path))).replace("--claude-worktrees-", "/")
     return dict(c, path=path, project=project[:42], when=analyze.last_activity(path),
