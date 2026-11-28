@@ -15,7 +15,7 @@ The script prints counts, project names, tool names and hook positions. It never
 
 | Count | What is counted | What it is not |
 |---|---|---|
-| undone | `git revert`, `git reset --hard`, and `git checkout -- <path>`, `git checkout .` or `git restore <path>` that throw edits away | A file taken from another ref (`git checkout main -- x`), an unstage, a command only echoed, grepped for or written to a file |
+| undone | `git revert`, `git reset --hard`, and `git checkout -- <path>`, `git checkout .` or `git restore <path>` that throw edits away | A file taken from another ref (`git checkout main -- x`), an unstage, a command only echoed, grepped for or written to a file, a discard in a subagent that never commits (a reviewer cleaning up a scratch check) |
 | review-fix | A commit whose message says it answers a review ("Review fixes", "address review"), or a fixup/squash commit | Every commit after a review: a fix with an ordinary message is missed |
 | hook blocks | Tool calls a PreToolUse hook refused, grouped as `<tool> hook <n>` | The idle hold on a prompt, which is not a tool call (`~/.claude/context-guard/runs.jsonl` has it) |
 | denied | Tool calls the user or the permission system refused | An operating-system "Permission denied", which is a failed call |

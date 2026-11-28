@@ -191,6 +191,23 @@ class FailedToolCalls(unittest.TestCase):
         c = quality.session_counts(main)
         self.assertEqual((c["undone"], dict(c["hook_blocks"])), (2, {"Bash hook 4": 1}))
 
+    def test_a_discard_in_a_subagent_that_never_commits_is_a_scratch_check_not_undone_work(self):
+        main = Transcript().bash("git status").save()
+        (Transcript(start=100).bash("git checkout base -- src/x.py").bash("npm test").bash("git restore src/x.py")
+         .save_as_subagent_of(main, "reviewer"))
+        self.assertEqual(quality.session_counts(main)["undone"], 0)
+
+    def test_a_discard_in_a_subagent_that_commits_is_still_undone_work(self):
+        main = Transcript().bash("git status").save()
+        (Transcript(start=100).bash("git restore src/x.py").bash("git commit -m 'second try'")
+         .save_as_subagent_of(main, "builder"))
+        self.assertEqual(quality.session_counts(main)["undone"], 1)
+
+    def test_a_hard_reset_in_a_subagent_that_never_commits_is_still_undone_work(self):
+        main = Transcript().bash("git status").save()
+        Transcript(start=100).bash("git reset --hard HEAD~1").save_as_subagent_of(main, "reviewer")
+        self.assertEqual(quality.session_counts(main)["undone"], 1)
+
     def test_red_first_and_weakened_come_from_the_cost_analyzer(self):
         c = (Transcript().edit("tests/test_x.py").bash("python -m pytest tests", "1 failed", is_error=True)
              .edit("src/x.py").counts())
